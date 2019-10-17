@@ -1,0 +1,166 @@
+---
+title: "Reading XML data type"
+author: "Sarah Vang"
+
+output: 
+  html_document:
+    toc: true
+---
+
+# Introduction
+
+# What is XML data type?
+XML stands for *Extensible Markup Language*. It is a markup language with a defined set of rules for encoding documents to a format flexible for sharing structured data over the public Internet as it is both human and machine readable.
+
+XML data are pre-structured as the data are embedded in itself. The basic building blocks are elements defined by tags. Elements in XML files are contained in an outermost element known as the *root element* and also support nested elements, allowing XML to support hierarchical structures. Element names describe the content of the element, and the structure describes the relationship between the elements. It takes large chunks of information and consolidate them into meaningful pieces that provide structure and organization to the information. 
+
+# Importing/using XML in R
+There are 2 main packages available in R for XML formatted data: **XML** and **xml2**. 
+
+The [**XML**](https://cran.r-project.org/web/packages/XML/XML.pdf) package provides functions to reading and creating XML and HTML documents.
+
+The [**xml2**](https://cran.r-project.org/web/packages/xml2/xml2.pdf) package is the more maintained package for parsing XML files. It uses a simple and consistent interface built on top of the library `libxml2`. Compared to the **XML** package, **xml2** automatically free up memory used by XML files and a more convenient handling of namespaces. 
+
+For the purpose of this vignettes - read in XML files, we will focus on the **XML** package to parse and interact with a *lineitem* XML data file obtained from [*here.*](http://aiweb.cs.washington.edu/research/projects/xmltk/xmldata/www/repository.html) 
+
+The the *lineitem* file consist of 16 variables about line items provided from the [*TPC*](http://www.tpc.org/information/about/abouttpc.asp) website.There's not much detail on where the data came from, the file was just [*queried*](http://www.tpc.org/tpc_documents_current_versions/pdf/tpc-h_v2.18.0.pdf) from a source. 
+
+With all the mysteries that may lie within, let's start with installing the package *XML*.
+```{r, eval=FALSE, warning=FALSE, message=FALSE}
+install.packages("XML",repos = "http://cran.us.r-project.org")
+```
+
+Now, let's read in and explore the file using a few functions. Of the four functions used below, only the [`xmlToDataFrame`](https://www.rdocumentation.org/packages/XML/versions/3.98-1.20/topics/xmlToDataFrame) function parse XML nodes to an R data frame. The other three functions are for analyzing the XML document. 
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+#Call packages
+library("XML")
+require("methods")
+
+# Give input file name to the function
+data<- xmlParse(file="lineitem.xml")
+
+#Parse the root node
+rootnode<- xmlRoot(data)
+
+#Find the number of nodes in the root
+rootsize<- xmlSize(rootnode)
+print(rootsize)
+
+#prints the first observation/row
+print(rootnode[1])
+
+#Makes the xml file a data frame
+#Other options exist for defining column names and types
+dataFrame <- xmlToDataFrame(doc="lineitem.xml")
+```
+
+Now with this, we can do our regular data frame manipulations, variable creations, or formatting. So, let's do just that!
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+require(dplyr)
+
+#Create a unit price variable
+lineitem<- dataFrame %>% mutate(UnitPrice=(as.numeric(L_EXTENDEDPRICE)/as.numeric(L_QUANTITY)))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::kable(head(lineitem))
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+#UnitPrice looks a little awkward - let's format the price
+#Creates a function for placing decimal
+decimal<- function(x,k) {
+ format(round(x, k), nsmall=k)
+}
+
+#Apply the decimal function
+L_UnitPrice<-decimal(lineitem$UnitPrice,2)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+lineitems<- lineitem %>% cbind(L_UnitPrice) %>% mutate(L_LINENUMBER=as.factor(L_LINENUMBER)) %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) 
+```
+
+Much better.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(knitr)
+knitr::kable(head(lineitems[c("UnitPrice","L_UnitPrice")]))
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+#Combine the new variable to the data frame and change L_LINENUMBER AND L_QUANTITY data type
+lineitem2<- lineitem %>% cbind(L_UnitPrice) %>% select(-UnitPrice) %>% mutate(L_LINENUMBER=as.factor(L_LINENUMBER)) %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) 
+```
+
+## Basic Exploratory Analysis
+
+Let's explore into this data. First, let's check some frequency.
+
+### Contengency tables
+Frequencies appears to be decreasing down the line - could there be a process to how lines operates? There also isn't much difference in shipment and returns per line too. Although, majority of the returns are under the **N** status.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::kable(table(lineitem2$L_LINENUMBER),caption="Purchase per Line", col.names = c("Line Number","Frequency"))
+
+#CAN'T FIND ANYTHING ABOUT VALUE DESCIPTION
+knitr::kable(table(lineitem2$L_LINENUMBER, as.character(lineitem2$L_RETURNFLAG)),caption="Returns per Line")
+
+knitr::kable(table(lineitem2$L_LINENUMBER, lineitem2$L_SHIPMODE),caption="Mode of shipping per Line")
+```
+
+### Qantitative summaries
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ifun <- function(x,...) {
+    return(summary(x))
+}
+
+line1<- lineitem2 %>% filter(L_LINENUMBER=="1") %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) %>% mutate(L_UnitPrice=as.numeric(L_UnitPrice)) %>% select(L_QUANTITY,L_UnitPrice)
+knitr::kable(sapply(line1,summary),caption="Line 1")
+
+line2<- lineitem2 %>% filter(L_LINENUMBER=="2") %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) %>% mutate(L_UnitPrice=as.numeric(L_UnitPrice)) %>% select(L_QUANTITY,L_UnitPrice)
+knitr::kable(sapply(line2,summary),caption="Line 2")
+
+line3<- lineitem2 %>% filter(L_LINENUMBER=="3") %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) %>% mutate(L_UnitPrice=as.numeric(L_UnitPrice)) %>% select(L_QUANTITY,L_UnitPrice)
+knitr::kable(sapply(line3,summary),caption="Line 3")
+
+line4<- lineitem2 %>% filter(L_LINENUMBER=="4") %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) %>% mutate(L_UnitPrice=as.numeric(L_UnitPrice)) %>% select(L_QUANTITY,L_UnitPrice)
+knitr::kable(sapply(line4,summary),caption="Line 4")
+
+line5<- lineitem2 %>% filter(L_LINENUMBER=="5") %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) %>% mutate(L_UnitPrice=as.numeric(L_UnitPrice)) %>% select(L_QUANTITY,L_UnitPrice)
+knitr::kable(sapply(line5,summary),caption="Line 5")
+
+line6<- lineitem2 %>% filter(L_LINENUMBER=="6") %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) %>% mutate(L_UnitPrice=as.numeric(L_UnitPrice)) %>% select(L_QUANTITY,L_UnitPrice)
+knitr::kable(sapply(line6,summary),caption="Line 6")
+
+line7<- lineitem2 %>% filter(L_LINENUMBER=="7") %>% mutate(L_QUANTITY=as.numeric(L_QUANTITY)) %>% mutate(L_UnitPrice=as.numeric(L_UnitPrice)) %>% select(L_QUANTITY,L_UnitPrice)
+knitr::kable(sapply(line7,summary),caption="Line 7")
+
+```
+
+### Visuals
+Let's further explore into the frequencies of lines operations. 
+
+Scatterplot: Could there be a relation ship via quantity and price?
+
+Purchases between lines are well spread out for price and quantity, but with the overlapping linear model a decreasing relationship is shown.
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+require(ggplot2)
+p2 <- ggplot(lineitem2,aes(x=L_UnitPrice,y=L_QUANTITY))
+p2 + geom_point(aes(col=L_LINENUMBER)) + geom_smooth(method=lm, col="Green", aes(group=L_LINENUMBER))
+```
+
+A very interesting data, but these plot don't really show much relation or difference. 
+
+Histogram:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+g1 <- ggplot(data= lineitem2 ,aes(x=L_QUANTITY))
+g1 + geom_histogram(aes(y=..density..)) + geom_density(color="red",line=2)
+```
+
+Boxplot:
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+g2<- ggplot(lineitem2,aes(x=L_LINENUMBER,y=L_QUANTITY))
+g2+geom_boxplot(fill="white") +geom_point(aes(col=L_LINENUMBER),size=1)
+```
+
+
